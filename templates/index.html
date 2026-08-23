@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fashion Compatibility Recommender</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --accent: #c2185b; --bg: #faf7f8; --card: #ffffff; --text: #2b2b2b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 28px 40px 10px; }
+  header h1 { margin: 0; font-size: 26px; }
+  header p { margin: 6px 0 0; color: #777; }
+  .layout { display: flex; gap: 28px; padding: 24px 40px 60px; flex-wrap: wrap; }
+  .panel { flex: 0 0 340px; }
+  #dropzone {
+    border: 2px dashed #d0a0b5; border-radius: 14px; background: var(--card);
+    height: 300px; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; cursor: pointer; text-align: center; padding: 16px;
+    transition: border-color .15s, background .15s; overflow: hidden;
+  }
+  #dropzone.dragover { border-color: var(--accent); background: #fdeef4; }
+  #dropzone img { max-width: 100%; max-height: 100%; border-radius: 8px; object-fit: contain; }
+  #dropzone .hint { color: #a06880; font-size: 15px; }
+  .controls { margin-top: 18px; background: var(--card); border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .controls label { display: block; margin: 10px 0 4px; font-size: 13px; color: #666; }
+  .controls select, .controls input[type=number] { width: 100%; padding: 7px; border: 1px solid #ddd; border-radius: 8px; }
+  .radio-row { display: flex; gap: 14px; margin-top: 4px; font-size: 14px; }
+  .radio-row label { display: inline; margin: 0; font-size: 14px; color: var(--text); }
+  button#go {
+    margin-top: 16px; width: 100%; padding: 11px; border: 0; border-radius: 10px;
+    background: var(--accent); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button#go:disabled { background: #d8a4bb; cursor: default; }
+  .results { flex: 1; min-width: 320px; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 5px rgba(0,0,0,.08); }
+  .card img { width: 100%; height: 190px; object-fit: cover; display: block; }
+  .card .meta { padding: 8px 10px; font-size: 12px; color: #666; }
+  .card .score { font-weight: 700; color: var(--accent); font-size: 13px; }
+  #status { color: #999; margin-bottom: 14px; }
+
+  /* ---- outfit view ---- */
+  .outfit-head {
+    background: var(--card); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px;
+    box-shadow: 0 1px 5px rgba(0,0,0,.08); display: flex; gap: 26px; flex-wrap: wrap; align-items: baseline;
+  }
+  .outfit-head .big { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .outfit-head .lbl { font-size: 12px; color: #888; display: block; }
+  .slot-card { position: relative; }
+  .slot-card .slot {
+    background: #fff; border-bottom: 1px solid #f0e4ea; padding: 7px 10px;
+    font-size: 13px; font-weight: 600; letter-spacing: .02em;
+  }
+  .slot-card.anchor .slot { color: var(--accent); }
+  .slot-card .badge {
+    position: absolute; top: 34px; right: 8px; background: var(--accent); color: #fff;
+    font-size: 10px; padding: 2px 7px; border-radius: 10px; letter-spacing: .04em;
+  }
+  .detected {
+    background: #fdeef4; border-radius: 10px; padding: 9px 14px; margin-bottom: 16px;
+    font-size: 13px; color: #7a3552;
+  }
+  .detected.low { background: #f3f1f2; color: #777; }
+  .slot-card.yours { outline: 2px solid var(--accent); }
+  .slot-card.yours .badge { background: #444; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Complete the Look</h1>
+  <p>Drop an image — the model builds a compatible outfit from the {{ n_products }}-product catalog (Shop&nbsp;the&nbsp;Look dataset).</p>
+</header>
+<div class="layout">
+  <div class="panel">
+    <div id="dropzone">
+      <span class="hint">Drag &amp; drop an image here<br>or click to browse</span>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+    <div class="controls">
+      <label>My image is a…</label>
+      <div class="radio-row">
+        <label><input type="radio" name="qtype" value="scene" checked> outfit / person photo</label>
+        <label><input type="radio" name="qtype" value="product"> single item</label>
+      </div>
+
+      <label>Result</label>
+      <div class="radio-row">
+        <label><input type="radio" name="mode" value="outfit" checked> complete outfit</label>
+        <label><input type="radio" name="mode" value="list"> ranked list</label>
+      </div>
+
+      <div class="mode-outfit">
+        <div id="slot-row" hidden>
+          <label for="query_slot">My item is the outfit's…</label>
+          <select id="query_slot">
+            <option value="">detect automatically</option>
+            {% for s in slots %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+        </div>
+        <label for="tier">How complete</label>
+        <select id="tier">
+          <option value="core" {{ 'selected' if default_tier == 'core' }}>Core — top, bottom, shoes</option>
+          <option value="standard" {{ 'selected' if default_tier == 'standard' }}>Standard — + outerwear &amp; bag</option>
+          <option value="full" {{ 'selected' if default_tier == 'full' }}>Full look — + sunglasses &amp; jewellery</option>
+        </select>
+        <label for="cohesion">Outfit coherence vs. query match: <span id="cohesion-val">{{ cohesion }}</span>%</label>
+        <input type="range" id="cohesion" min="0" max="100" value="{{ cohesion }}" style="width:100%">
+      </div>
+
+      <div class="mode-list" hidden>
+        <label for="category">Recommend only from category</label>
+        <select id="category">
+          <option value="">All categories</option>
+          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+        <label for="topk">Number of recommendations</label>
+        <input type="number" id="topk" value="12" min="1" max="60">
+      </div>
+
+      <label for="colorw">Color &amp; pattern emphasis: <span id="colorw-val">30</span>%</label>
+      <input type="range" id="colorw" min="0" max="100" value="30" style="width:100%">
+      <button id="go" disabled>Complete the look</button>
+    </div>
+  </div>
+  <div class="results">
+    <div id="status">No query yet.</div>
+    <div id="head"></div>
+    <div id="grid"></div>
+  </div>
+</div>
+<script>
+const dz = document.getElementById('dropzone');
+const fileInput = document.getElementById('file');
+const go = document.getElementById('go');
+const grid = document.getElementById('grid');
+const head = document.getElementById('head');
+const status = document.getElementById('status');
+let currentFile = null;
+let currentUrl = null;
+
+function mode() {
+  return document.querySelector('input[name=mode]:checked').value;
+}
+function setFile(f) {
+  if (!f || !f.type.startsWith('image/')) return;
+  currentFile = f;
+  if (currentUrl) URL.revokeObjectURL(currentUrl);
+  currentUrl = URL.createObjectURL(f);
+  dz.innerHTML = `<img src="${currentUrl}" alt="query">`;
+  go.disabled = false;
+}
+dz.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => {
+  e.preventDefault(); dz.classList.add('dragover');
+}));
+['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+}));
+dz.addEventListener('drop', e => setFile(e.dataTransfer.files[0]));
+document.getElementById('colorw').addEventListener('input', e => {
+  document.getElementById('colorw-val').textContent = e.target.value;
+});
+document.getElementById('cohesion').addEventListener('input', e => {
+  document.getElementById('cohesion-val').textContent = e.target.value;
+});
+document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => {
+  const outfit = mode() === 'outfit';
+  document.querySelector('.mode-outfit').hidden = !outfit;
+  document.querySelector('.mode-list').hidden = outfit;
+  go.textContent = outfit ? 'Complete the look' : 'Find compatible items';
+}));
+// which slot the user's own item fills is only meaningful for a single garment
+function syncSlotRow() {
+  const qtype = document.querySelector('input[name=qtype]:checked').value;
+  document.getElementById('slot-row').hidden = qtype !== 'product';
+}
+document.querySelectorAll('input[name=qtype]').forEach(r => r.addEventListener('change', syncSlotRow));
+syncSlotRow();
+
+function productCard(item, extra = '') {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    ${extra}
+    <img src="${item.image}" loading="lazy" alt="">
+    <div class="meta">
+      <div class="score">compatibility ${item.score.toFixed(3)}</div>
+      <div>style ${item.style_score.toFixed(3)} · color ${item.color_score.toFixed(3)}</div>
+      ${item.category.split('|').pop()}
+    </div>`;
+  return card;
+}
+
+function renderList(data) {
+  status.textContent = `Top ${data.results.length} compatible products:`;
+  for (const item of data.results) grid.appendChild(productCard(item));
+}
+
+function renderOutfit(data) {
+  const s = data.outfit_score;
+  status.textContent = `Your look — ${data.outfit.length} pieces, one per category:`;
+  head.innerHTML = `
+    <div class="outfit-head">
+      <div><span class="big">${s.overall.toFixed(3)}</span><span class="lbl">outfit score</span></div>
+      <div><span class="big">${s.query.toFixed(3)}</span><span class="lbl">match with your image</span></div>
+      <div><span class="big">${s.cohesion.toFixed(3)}</span><span class="lbl">pieces agree with each other</span></div>
+    </div>`;
+
+  const d = data.detection;
+  if (d) {
+    const pct = Math.round(d.confidence * 100);
+    head.insertAdjacentHTML('beforeend', d.applied
+      ? `<div class="detected">Recognised your item as <b>${d.category}</b> (${pct}% confident) — that slot is left to your own piece.</div>`
+      : `<div class="detected low">Not sure what your item is (best guess <b>${d.category}</b>, ${pct}%), so every slot was filled. Pick the slot manually to override.</div>`);
+  }
+
+  if (data.query_slot && currentUrl) {
+    const card = document.createElement('div');
+    card.className = 'card slot-card yours';
+    card.innerHTML = `
+      <div class="slot">${data.query_slot}</div>
+      <span class="badge">YOURS</span>
+      <img src="${currentUrl}" alt="your item">
+      <div class="meta"><div class="score">your item</div>
+        ${d && d.applied ? `detected: ${d.category}` : 'the look is built around this'}</div>`;
+    grid.appendChild(card);
+  }
+  for (const item of data.outfit) {
+    const card = productCard(item, `<div class="slot">${item.slot}</div>` +
+      (item.anchor ? '<span class="badge">ANCHOR</span>' : ''));
+    card.classList.add('slot-card');
+    if (item.anchor) card.classList.add('anchor');
+    const meta = card.querySelector('.meta');
+    meta.insertAdjacentHTML('beforeend', `<div>fits outfit ${item.fit.toFixed(3)}</div>`);
+    grid.appendChild(card);
+  }
+}
+
+go.addEventListener('click', async () => {
+  if (!currentFile) return;
+  const outfit = mode() === 'outfit';
+  go.disabled = true;
+  status.textContent = outfit ? 'Composing your outfit…' : 'Computing compatibility…';
+  grid.innerHTML = '';
+  head.innerHTML = '';
+  const fd = new FormData();
+  fd.append('image', currentFile);
+  fd.append('query_type', document.querySelector('input[name=qtype]:checked').value);
+  fd.append('color_weight', document.getElementById('colorw').value / 100);
+  if (outfit) {
+    fd.append('tier', document.getElementById('tier').value);
+    fd.append('cohesion_weight', document.getElementById('cohesion').value / 100);
+    if (!document.getElementById('slot-row').hidden)
+      fd.append('query_slot', document.getElementById('query_slot').value);
+  } else {
+    fd.append('category', document.getElementById('category').value);
+    fd.append('top_k', document.getElementById('topk').value);
+  }
+  try {
+    const r = await fetch(outfit ? '/api/outfit' : '/api/recommend',
+                          { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    outfit ? renderOutfit(data) : renderList(data);
+  } catch (err) {
+    status.textContent = 'Error: ' + err.message;
+  } finally {
+    go.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
