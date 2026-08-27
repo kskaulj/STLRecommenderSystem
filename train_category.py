@@ -40,8 +40,6 @@ def crop_bbox(img: Image.Image, bbox: list[float]) -> Image.Image:
 def build_records(labels: dict[str, str], use_scene_crops: bool) -> list[dict]:
     records = [{"source": "catalog", "signature": sig, "label": lab}
                for sig, lab in sorted(labels.items())]
-    if not use_scene_crops:
-        return records
 
     dropped = 0
     for pair in load_pairs():
@@ -159,22 +157,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--epochs", type=int, default=config.PROBE_EPOCHS)
     parser.add_argument("--seed", type=int, default=config.SEED)
-    parser.add_argument("--no-scene-crops", action="store_true",
-                        help="ablation: train on catalog product shots only, but "
-                             "still validate on both sources, so the cost of "
-                             "dropping in-the-wild training data is visible")
-    parser.add_argument("--backbone", choices=("compat", "imagenet"), default="compat",
-                        help="probe the compatibility-trained trunk (default) or a "
-                             "plain ImageNet ResNet-18, to see what the hinge-loss "
-                             "fine-tuning did to category information")
+    parser.add_argument("--no-scene-crops", action="store_true")                 )
+    parser.add_argument("--backbone", choices=("compat", "imagenet"), default="compat",                      )
     parser.add_argument("--output", default="category_results.json")
-    parser.add_argument("--no-save", action="store_true",
-                        help="report metrics only; leave the served probe alone "
-                             "(use this for ablation runs)")
-    parser.add_argument("--plot", default=None, help="write a confusion-matrix PNG")
+    parser.add_argument("--no-save", action="store_true"                        )
+    parser.add_argument("--plot", default=None)
     args = parser.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")
     torch.manual_seed(args.seed)
     print(f"device: {device}")
 
@@ -282,8 +272,6 @@ def main() -> None:
     correct_slot = slot_map[truth] == slot_map[pred]
     catalog = source == "catalog"
 
-    print(f"\nrisk-coverage on catalog product shots (the app's actual input)")
-    print(f"{'threshold':>10}{'coverage':>10}{'slot acc':>10}{'cat acc':>9}")
     coverage_table = []
     for threshold in (0.0, 0.4, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9):
         keep = catalog & (confidence >= threshold)
