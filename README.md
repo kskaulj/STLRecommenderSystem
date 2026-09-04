@@ -1,5 +1,5 @@
-# CTL_RecommenderSystem
-My Master thesis.
+# Fashion RecommenderS ystem AKA My Master thesis.
+
 
 A deep learning recommendation system built on Pinterest **Shop the Look** dataset, following the approach of *Complete the Look: Scene-based Complementary Product Recommendation* (Kang et al., CVPR 2019,
 [arXiv:1812.01748](https://arxiv.org/abs/1812.01748)).
@@ -22,7 +22,7 @@ Drop an image into the web UI and the system ranks the product catalog by **styl
 | `evaluate.py` | full-catalog evaluation of all methods, JSON + chart output |
 | `app.py` + `templates/index.html` | drag-and-drop Flask UI: outfit composer + ranked list |
 
-##Usage 
+## Usage 
 
 <venv>\Scripts\Activate.ps1
 python download_images.py --pairs 8000   # cca 3 min, needs internet
