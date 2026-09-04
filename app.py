@@ -119,7 +119,6 @@ def _blend(style: torch.Tensor, color: torch.Tensor, w: float) -> torch.Tensor:
 
 
 def _query_scores(q_style: torch.Tensor, q_color: torch.Tensor):
-    """Per-product compatibility with the dropped image (cosine similarities)."""
     style = EMBEDDINGS @ q_style.squeeze(0)
     color = COLOR_EMBEDDINGS @ q_color.squeeze(0)
     return style, color
