@@ -24,6 +24,9 @@ Drop an image into the web UI and the system ranks the product catalog by **styl
 
 ## Usage 
 
+In PowerShell: 
+
+```
 <venv>\Scripts\Activate.ps1
 python download_images.py --pairs 8000   # cca 3 min, needs internet
 python train.py                          # cca 15 min on RTX 2070
@@ -31,7 +34,7 @@ python embed_catalog.py
 python train_category.py                 # optional: item recognition probe
 python evaluate.py --output results.json --plot recall.png
 python app.py                            # open http://127.0.0.1:5000
-
+```
 
 In the UI, choose whether your image is an **outfit/person photo** (scene head) or a **single item** (product head), and drop the image. Two result modes:
 
