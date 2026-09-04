@@ -1,4 +1,4 @@
-# Fashion RecommenderS ystem AKA My Master thesis.
+# Fashion RecommenderSystem AKA My Master thesis.
 
 
 A deep learning recommendation system built on Pinterest **Shop the Look** dataset, following the approach of *Complete the Look: Scene-based Complementary Product Recommendation* (Kang et al., CVPR 2019,
